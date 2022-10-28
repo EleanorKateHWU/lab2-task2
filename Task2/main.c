@@ -134,6 +134,7 @@ int main(void)
 			// Invert the direction flag
 			direction = !direction;
 			update_motor_direction();
+			direction_change = 0;
 		}
 		if (button_pressed)
 		{
