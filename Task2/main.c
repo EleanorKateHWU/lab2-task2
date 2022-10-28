@@ -20,12 +20,10 @@ Arduino : -  R  A5 A4 A3 A2 A1 A0
 
 // Define the binary value to set pin 6 only as output using port D
 #define DDRD_PIN_6_OUT 0b01000000
-// Define the binary value to set pin 6 only as output using port D
-#define DDRD_PIN_5_OUT 0b00100000
-// First two bits of TCCR0A determine compare match behavior for OC0A/B,
+
+// First two bits of TCCR0A determine compare match behavior for OC0A,
 // values selected from datasheet for toggling on compare match (fast PWM)
 #define TCCR0A_CLEAR_A 0b10000000 // Set at timer start, unset at compare match
-#define TCCR0A_CLEAR_B 0b00100000 // Set at timer start, unset at compare match
 // Set WGM01 and WGM00 for fast PWM, counting up to 0xFF
 #define TCCR0A_FAST_PWM_FULL_RANGE 0b00000011
 // TCCR0B bits to set for a 1x clock divider
@@ -34,6 +32,10 @@ Arduino : -  R  A5 A4 A3 A2 A1 A0
 #define EICRA_FALLING_INT0 0x02
 // Define EICRA bits to set for a falling edge interrupt on INT1
 #define EICRA_FALLING_INT1 (0x02 << 2) // 0x08?
+// Define port B output pins
+#define PORTB_OUTPUTS 0b00001100
+#define PORTB_MOTOR_FORWARD 0b00001000
+#define PORTB_MOTOR_BACKWARD 0b00000100
 
 // Flag to indicate a full button press has been registered to main loop (button 1).
 volatile uint8_t button_pressed;
@@ -42,12 +44,11 @@ volatile uint8_t direction_change;
 
 // Store the duty cycle values to switch between
 #define N_DUTY_CYCLE_VALUES 4
-const float DUTY_CYCLE_VALUES [N_DUTY_CYCLE_VALUES] = {0.0, 0.25, 0.625, 0.875};
-
+//const float DUTY_CYCLE_VALUES [N_DUTY_CYCLE_VALUES] = {0.0, 0.25, 0.625, 0.875};
+const float DUTY_CYCLE_VALUES [N_DUTY_CYCLE_VALUES] = {0.4, 0.6, 0.8, 1.0};
+	
 // Program state variable to track next duty cycle output to set
 uint8_t next_duty_cycle_idx;
-// Program state variable tracking last set duty cycle value index
-uint8_t last_duty_cycle_idx;
 // State variable for a boolean direction flag
 uint8_t direction;
 
@@ -65,26 +66,27 @@ ISR (INT1_vect)
 	direction_change = 1;
 }
 
-void set_pwm_dutycycle(float percentage)
+void update_motor_direction()
 {
-	TCCR0B = 0x00; // Temporarily stop timer while updating parameters
-	TCNT0 = 0x00; // Reset timer counter
-	// Using fast PWM mode for timer 0, setting up timer registers
-	// Setting TCCR0A using bitwise OR to combine required bits
 	if (direction)
 	{
-		// Set OCR0A to percentage of the timer range (0 to 255)
-		OCR0A = percentage*255;
-		// Use OCR0A and pin 6 in forward direction
-		TCCR0A = TCCR0A_CLEAR_A | TCCR0A_FAST_PWM_FULL_RANGE;
+		PORTB = PORTB_MOTOR_FORWARD;
 	}
 	else
 	{
-		// Set OCR0B to percentage of the timer range (0 to 255)
-		OCR0B = percentage*255;
-		// Use OCR0B and pin 5 in backward direction
-		TCCR0A = TCCR0A_CLEAR_B | TCCR0A_FAST_PWM_FULL_RANGE;
+		PORTB = PORTB_MOTOR_BACKWARD;
 	}
+}
+
+void set_pwm_dutycycle(float percentage)
+{
+	TCCR0B = 0x00; // Temporarily stop timer while updating parameters
+	//TCNT0 = 0x00; // Reset timer counter
+	// Using fast PWM mode for timer 0, setting up timer registers
+	// Set OCR0A to percentage of the timer range (0 to 255)
+	OCR0A = percentage*255;
+	// Setting TCCR0A using bitwise OR to combine required bits
+	TCCR0A = TCCR0A_CLEAR_A | TCCR0A_FAST_PWM_FULL_RANGE;
 	// Use 1x clock divider for highest PWM frequency
 	TCCR0B = TCCR0B_CLK_1x;
 	// Timer has been started by setting clock divider
@@ -101,14 +103,16 @@ void init()
 	// Initialize motor direction as forwards (NOT false)
 	direction = !0;
 	
-	// Only outputs are motor PWM pins, so set port D to output these pins
-	DDRD = DDRD_PIN_6_OUT | DDRD_PIN_5_OUT;
+	// Port D's only outputs are motor PWM pins, so set port D to output these pins
+	DDRD = DDRD_PIN_6_OUT;
 	// Initialize port D output to all zeros (output pins off)
 	PORTD = 0x00;
-	
+	// Set port B output pins as required for direction selectors
+	DDRB = PORTB_OUTPUTS;
+	// Set port B output values by running the direction setting once, using the initial value
+	update_motor_direction();
 	// Start with outputting the first PWM duty cycle (0)
 	next_duty_cycle_idx = 0;
-	last_duty_cycle_idx = 0;
 	
 	// Set up interrupts for button presses (falling-edge)
 	EIMSK = (1 << INT0) | (1 << INT1); // Enable INT0 and INT1 interrupts
@@ -129,13 +133,11 @@ int main(void)
 		{
 			// Invert the direction flag
 			direction = !direction;
-			// Run the pwm duty cycle using the last duty cycle
-			set_pwm_dutycycle(DUTY_CYCLE_VALUES[last_duty_cycle_idx]);
+			update_motor_direction();
 		}
 		if (button_pressed)
 		{
 			// Update the last duty cycle index, before next index is updated.
-			last_duty_cycle_idx = next_duty_cycle_idx;
 			set_pwm_dutycycle(DUTY_CYCLE_VALUES[next_duty_cycle_idx++]);
 			if (next_duty_cycle_idx >= N_DUTY_CYCLE_VALUES)
 			{
