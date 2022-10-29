@@ -77,7 +77,7 @@ ISR (INT1_vect)
 
 ISR (ADC_vect)
 {
-	//new_adc_val = (ADCH << 8) | ADCL;
+	// Only record most significant 8 bits of value, equivalent to shifting right by two
 	new_adc_val = ADCH;
 	// If the sampled value is different from the last set, flag an update is required.
 	if (new_adc_val != prev_adc_val) {
@@ -175,7 +175,6 @@ int main(void)
 		{
 			// Update previously-set ADC sample value
 			prev_adc_val = new_adc_val;
-			// TODO: Calculate 8-bit duty cycle, downscale 10-bit value.
 			uint8_t dutycycle = prev_adc_val;
 			set_pwm_dutycycle(dutycycle);
 			dutycycle_change_adc = 0;
