@@ -8,6 +8,8 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
+#define USE_ADC
+
 /*
 Port register bits to Arduino pin numbers (in C binary number mapping order)
 Port D  : 0  0  0  0  0  0  0  0
@@ -41,6 +43,12 @@ Arduino : -  R  A5 A4 A3 A2 A1 A0
 volatile uint8_t button_pressed;
 // Flag to indicate a full button press has been registered to main loop (button 2).
 volatile uint8_t direction_change;
+// Flag to indicate new duty cycle requested via potentiometer
+volatile uint8_t dutycycle_change_adc;
+// ISR-filled potentiometer value
+volatile uint8_t new_adc_val;
+// Track previous potentiometer value
+uint8_t prev_adc_val;
 
 // Store the duty cycle values to switch between
 #define N_DUTY_CYCLE_VALUES 4
@@ -66,8 +74,20 @@ ISR (INT1_vect)
 	direction_change = 1;
 }
 
+//TODO: check name of ISR for ADC
+ISR (ADC_vect)
+{
+	//new_adc_val = (ADCH << 8) | ADCL;
+	new_adc_val = ADCH;
+	// If the sampled value is different from the last set, flag an update is required.
+	if (new_adc_val != prev_adc_val) {
+		dutycycle_change_adc = 1;
+	}
+}
+
 void update_motor_direction()
 {
+	// Switch port B output to set/unset 1A/2A on H-bridge driver
 	if (direction)
 	{
 		PORTB = PORTB_MOTOR_FORWARD;
@@ -92,6 +112,22 @@ void set_pwm_dutycycle(float percentage)
 	// Timer has been started by setting clock divider
 }
 
+void init_ADC()
+{
+	// First two bits select Vref to Vcc (01)
+	// Third bit left-justifies result (1)
+	// Fourth bit not used
+	// Last 4 bits selects ADC pin for mux to connect (A0, 0000)
+	ADMUX = 0b01100000;
+	// First bit enables ADC (1)
+	// Second bit starts conversion (1), aiming for continuous mode, so not requiring re-setting.
+	// Third it enables auto-triggering (1)
+	// Bit 4 is set on interrupts
+	// Bit 5 enables ADC interrupt
+	// Last 3 bits sets clock prescaling for ADC conversion rate. Using slowest rate, /128 (111)
+	ADCSRA = 0b11101111;
+}
+
 // Set up pin states and values, and initialize any internal hardware which
 // has a consistent use in the program
 void init()
@@ -100,6 +136,8 @@ void init()
 	button_pressed = 0;
 	// Initialize button 2 pressed flag to false
 	direction_change = 0;
+	// Initialize potentiometer change flag to false
+	dutycycle_change_adc = 0;
 	// Initialize motor direction as forwards (NOT false)
 	direction = !0;
 	
@@ -124,11 +162,25 @@ int main(void)
 {
 	// Run initialization function
 	init();
+	#ifdef USE_ADC
+	init_ADC();
+	#endif
 	// Set initial PWM output (which starts at 0%) and prepare next cycle index
 	set_pwm_dutycycle(DUTY_CYCLE_VALUES[next_duty_cycle_idx++]);
 	// Main Program Loop
     while (1) 
     {
+		#ifdef USE_ADC
+		if (dutycycle_change_adc)
+		{
+			// Update previously-set ADC sample value
+			prev_adc_val = new_adc_val;
+			// TODO: Calculate 8-bit duty cycle, downscale 10-bit value.
+			uint8_t dutycycle = prev_adc_val;
+			set_pwm_dutycycle(dutycycle);
+			dutycycle_change_adc = 0;
+		}
+		#endif
 		if (direction_change)
 		{
 			// Invert the direction flag
@@ -136,6 +188,7 @@ int main(void)
 			update_motor_direction();
 			direction_change = 0;
 		}
+		#ifndef USE_ADC
 		if (button_pressed)
 		{
 			// Update the last duty cycle index, before next index is updated.
@@ -146,6 +199,7 @@ int main(void)
 			}
 			button_pressed = 0;
 		}
+		#endif
     }
 }
 
