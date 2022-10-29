@@ -8,6 +8,7 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
+// Pre-compile mode selection if using the ADC & Potentiometer, comment out/remove for button control.
 #define USE_ADC
 
 /*
@@ -74,7 +75,6 @@ ISR (INT1_vect)
 	direction_change = 1;
 }
 
-//TODO: check name of ISR for ADC
 ISR (ADC_vect)
 {
 	//new_adc_val = (ADCH << 8) | ADCL;
