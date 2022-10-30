@@ -1,6 +1,6 @@
 # Task 2
 ## Schematic
-![Schematic](schematic.jpg)
+![Schematic](schematic.png)
 ## Photo of Circuit
 ![Circuit Photograph](circuit.jpg)
 PWM output from the continously variable potentiometer mode set to approximately 70% duty cycle:
