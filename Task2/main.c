@@ -9,7 +9,7 @@
 #include <avr/interrupt.h>
 
 // Pre-compile mode selection if using the ADC & Potentiometer, comment out/remove for button control.
-#define USE_ADC
+//#define USE_ADC
 
 /*
 Port register bits to Arduino pin numbers (in C binary number mapping order)
